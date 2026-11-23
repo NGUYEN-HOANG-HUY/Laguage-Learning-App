@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
 
-import { ReviewSession } from '../components/ReviewSession';
+import { HomeDashboard } from '../components/HomeDashboard';
 import { supabase } from '../lib/supabase';
 
 export default function SignInScreen() {
@@ -161,7 +161,7 @@ export default function SignInScreen() {
   }
 
   if (session && sessionValidated) {
-    return <ReviewSession session={session} signOut={signOut} busy={busy} />;
+    return <HomeDashboard session={session} signOut={signOut} busy={busy} />;
   }
 
   return (

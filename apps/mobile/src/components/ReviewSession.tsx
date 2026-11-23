@@ -21,6 +21,7 @@ type Props = {
   session: Session;
   signOut: () => Promise<void>;
   busy: boolean;
+  onHome: () => void;
 };
 
 const ratings: { value: ReviewRating; label: string }[] = [
@@ -30,7 +31,7 @@ const ratings: { value: ReviewRating; label: string }[] = [
   { value: 4, label: 'Easy' },
 ];
 
-export function ReviewSession({ session, signOut, busy: authBusy }: Props) {
+export function ReviewSession({ session, signOut, busy: authBusy, onHome }: Props) {
   const db = useSQLiteContext();
   const [queue, setQueue] = useState<LocalReviewCard[]>([]);
   const [newLimit, setNewLimit] = useState(10);
@@ -135,6 +136,13 @@ export function ReviewSession({ session, signOut, busy: authBusy }: Props) {
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onHome}
+        style={styles.homeButton}
+      >
+        <Text style={styles.homeButtonText}>← Trang chủ</Text>
+      </Pressable>
       <View style={styles.header}>
         <View>
           <Text style={styles.eyebrow}>ÔN TẬP</Text>
@@ -282,6 +290,16 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: '#536078',
+    fontWeight: '600',
+  },
+  homeButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 18,
+    paddingVertical: 6,
+  },
+  homeButtonText: {
+    color: '#3157d5',
+    fontSize: 15,
     fontWeight: '600',
   },
   progressRow: {
