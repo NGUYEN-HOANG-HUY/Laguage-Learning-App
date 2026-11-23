@@ -1,0 +1,11 @@
+project_id = "language-learning-app"
+
+[db]
+major_version = 15
+
+[auth]
+site_url = "http://localhost:8081"
+additional_redirect_urls = ["languagelearningapp://**"]
+
+[auth.email]
+enable_signup = true
