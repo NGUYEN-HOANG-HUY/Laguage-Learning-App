@@ -1,5 +1,6 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,9 @@ from app.srs import (
     FSRS_ALGORITHM_VERSION,
     PY_FSRS_PACKAGE_VERSION,
     review_card,
+    review_sm2,
 )
+from scripts.simulate_srs import simulate
 
 VECTORS = json.loads(
     (
@@ -22,7 +25,7 @@ VECTORS = json.loads(
 
 def test_python_fsrs_matches_shared_golden_vectors() -> None:
     assert VECTORS["algorithm"] == FSRS_ALGORITHM_VERSION
-    assert PY_FSRS_PACKAGE_VERSION == "6.3.3"
+    assert PY_FSRS_PACKAGE_VERSION == version("fsrs") == "6.3.3"
 
     base = datetime.fromisoformat(VECTORS["baseDate"].replace("Z", "+00:00"))
     for case in VECTORS["cases"]:
@@ -57,6 +60,61 @@ def test_review_rejects_non_utc_timestamp() -> None:
 def test_review_rejects_unknown_rating() -> None:
     with pytest.raises(ValueError, match="rating"):
         review_card(None, 5, datetime.now(timezone.utc))
+
+@pytest.mark.parametrize("rating", [True, 1.5, "3"])
+def test_review_rejects_non_integer_rating(rating: object) -> None:
+    with pytest.raises(ValueError, match="integer"):
+        review_card(None, rating, datetime.now(timezone.utc))  # type: ignore[arg-type]
+
+
+def test_sm2_again_resets_repetitions_and_clamps_ease_factor() -> None:
+    state, due_at = review_sm2(
+        {"repetitions": 4, "interval_days": 12, "ease_factor": 1.3},
+        1,
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    assert state == {"repetitions": 0, "interval_days": 1, "ease_factor": 1.3}
+    assert due_at == datetime(2026, 1, 2, tzinfo=timezone.utc)
+
+
+def test_sm2_uses_first_and_second_success_intervals() -> None:
+    first, first_due = review_sm2(
+        {"repetitions": 0, "interval_days": 0, "ease_factor": 2.5},
+        3,
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    second, second_due = review_sm2(
+        first,
+        4,
+        first_due,
+    )
+
+    assert first["interval_days"] == 1
+    assert second["repetitions"] == 2
+    assert second["interval_days"] == 6
+    assert second_due == datetime(2026, 1, 8, tzinfo=timezone.utc)
+
+
+def test_sm2_rejects_invalid_rating() -> None:
+    with pytest.raises(ValueError, match="rating"):
+        review_sm2(
+            {"repetitions": 0, "interval_days": 0, "ease_factor": 2.5},
+            True,
+            datetime.now(timezone.utc),  # type: ignore[arg-type]
+        )
+
+
+def test_90_day_simulation_reports_both_algorithms() -> None:
+    result = simulate(days=90, new_cards_per_day=3)
+
+    assert result["assumptions"]["days"] == 90
+    assert result["assumptions"]["new_cards_per_day"] == 3
+    assert len(result["fsrs_6"]["daily_reviews"]) == 90
+    assert len(result["sm2"]["daily_reviews"]) == 90
+    assert sum(result["fsrs_6"]["daily_reviews"]) >= 270
+    assert sum(result["sm2"]["daily_reviews"]) >= 270
+    assert result["fsrs_6"]["daily_reviews"] != result["sm2"]["daily_reviews"]
 
 
 def test_lapse_increments_only_for_review_card_again() -> None:

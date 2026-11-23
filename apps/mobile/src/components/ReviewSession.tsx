@@ -40,18 +40,25 @@ export function ReviewSession({ session, signOut, busy: authBusy }: Props) {
   const [saving, setSaving] = useState(false);
   const [syncWarning, setSyncWarning] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const shownAt = useRef(Date.now());
+  const shownAt = useRef(0);
   const userId = session.user.id;
+
+  const applyQueueResult = useCallback(
+    (result: Awaited<ReturnType<typeof loadReviewQueue>>) => {
+      setQueue(result.cards);
+      setNewLimit(result.newLimit);
+      setReviewedNewToday(result.reviewedNewToday);
+      setSyncWarning(result.syncWarning);
+    },
+    [],
+  );
 
   const refreshQueue = useCallback(async () => {
     setLoading(true);
     setErrorMessage('');
     try {
       const result = await loadReviewQueue(db, userId);
-      setQueue(result.cards);
-      setNewLimit(result.newLimit);
-      setReviewedNewToday(result.reviewedNewToday);
-      setSyncWarning(result.syncWarning);
+      applyQueueResult(result);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : 'Không thể tải hàng đợi ôn tập.',
@@ -59,20 +66,33 @@ export function ReviewSession({ session, signOut, busy: authBusy }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [db, userId]);
+  }, [applyQueueResult, db, userId]);
 
   useEffect(() => {
-    void refreshQueue();
-  }, [refreshQueue]);
+    let active = true;
+    loadReviewQueue(db, userId)
+      .then((result) => {
+        if (active) applyQueueResult(result);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setErrorMessage(
+            error instanceof Error ? error.message : 'Không thể tải hàng đợi ôn tập.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
-  useEffect(() => {
-    shownAt.current = Date.now();
-    setRevealed(false);
-  }, [queue[0]?.id]);
+    return () => {
+      active = false;
+    };
+  }, [applyQueueResult, db, userId]);
 
   const current = queue[0];
 
-  async function submitRating(rating: ReviewRating) {
+  async function submitRating(rating: ReviewRating, durationMs: number) {
     if (!current || saving) return;
 
     setSaving(true);
@@ -84,7 +104,7 @@ export function ReviewSession({ session, signOut, busy: authBusy }: Props) {
         current,
         rating,
         now,
-        Math.max(0, Date.now() - shownAt.current),
+        durationMs,
       );
       const nextReviewedNewCount =
         reviewedNewToday + (current.state === 0 ? 1 : 0);
@@ -166,7 +186,10 @@ export function ReviewSession({ session, signOut, busy: authBusy }: Props) {
           ) : (
             <Pressable
               accessibilityRole="button"
-              onPress={() => setRevealed(true)}
+              onPress={() => {
+                shownAt.current = Date.now();
+                setRevealed(true);
+              }}
               style={styles.revealButton}
             >
               <Text style={styles.revealText}>Hiện nghĩa</Text>
@@ -180,7 +203,12 @@ export function ReviewSession({ session, signOut, busy: authBusy }: Props) {
                   accessibilityRole="button"
                   disabled={saving}
                   key={rating.value}
-                  onPress={() => void submitRating(rating.value)}
+                  onPress={() =>
+                    void submitRating(
+                      rating.value,
+                      Math.max(0, Date.now() - shownAt.current),
+                    )
+                  }
                   style={({ pressed }) => [
                     styles.ratingButton,
                     (pressed || saving) && styles.muted,

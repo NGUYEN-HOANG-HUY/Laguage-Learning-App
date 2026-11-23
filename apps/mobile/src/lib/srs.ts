@@ -1,4 +1,4 @@
-import { createEmptyCard, fsrs, Rating, State, type Card } from 'ts-fsrs';
+import { createEmptyCard, fsrs, State, type Card } from 'ts-fsrs';
 
 export const FSRS_ALGORITHM_VERSION = 'FSRS-6';
 export const TS_FSRS_PACKAGE_VERSION = '5.4.2';

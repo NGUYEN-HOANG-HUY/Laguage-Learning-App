@@ -230,54 +230,92 @@ group by l.user_id;
 -- ---------------------------------------------------------------------
 -- 6. HÀM TRUY VẤN
 -- ---------------------------------------------------------------------
--- Hàng đợi hôm nay: ôn thẻ đến hạn trước, thêm thẻ mới trong daily limit.
+-- Hàng đợi hôm nay: tự ghi danh nội dung đã QA trong daily limit; thẻ đến hạn trước.
 create or replace function public.get_review_queue(p_limit int default 100)
 returns setof public.user_cards
-language sql stable security invoker
+language plpgsql security invoker
 set search_path = ''
 as $$
-  with user_settings as (
-    select p.new_cards_per_day
+declare
+  v_new_limit int;
+  v_reviewed_count int;
+  v_existing_new_count int;
+  v_to_enroll int;
+begin
+  select coalesce(p.new_cards_per_day, 0)
+    into v_new_limit
     from public.profiles p
-    where p.id = auth.uid()
-  ),
-  today_new_reviews as (
-    select count(*)::int as reviewed_count
+   where p.id = auth.uid();
+  v_new_limit := coalesce(v_new_limit, 0);
+
+  select count(*)::int
+    into v_reviewed_count
     from public.review_logs r
-    where r.user_id = auth.uid()
-      and r.prev_state = 0
-      and r.reviewed_at >= (
-        date_trunc('day', now() at time zone 'Asia/Ho_Chi_Minh')
-        at time zone 'Asia/Ho_Chi_Minh'
-      )
-  ),
-  due_reviews as (
-    select c.*
+   where r.user_id = auth.uid()
+     and r.prev_state = 0
+     and r.reviewed_at >= (
+       date_trunc('day', now() at time zone 'Asia/Ho_Chi_Minh')
+       at time zone 'Asia/Ho_Chi_Minh'
+     );
+
+  select count(*)::int
+    into v_existing_new_count
     from public.user_cards c
-    where c.user_id = auth.uid()
-      and c.state <> 0
-      and c.due_at <= now()
+   where c.user_id = auth.uid()
+     and c.state = 0;
+
+  v_to_enroll := greatest(
+    0,
+    v_new_limit - coalesce(v_reviewed_count, 0) - coalesce(v_existing_new_count, 0)
+  );
+
+  -- Enroll only today's remaining allowance; never create cards from draft content.
+  if v_to_enroll > 0 then
+    insert into public.user_cards (user_id, item_id)
+    select auth.uid(), v.id
+      from public.vocab_items v
+     where v.qa_status in ('sampled', 'verified')
+       and v.lang = any(coalesce(
+         (select p.target_langs from public.profiles p where p.id = auth.uid()),
+         '{}'::text[]
+       ))
+       and not exists (
+         select 1
+           from public.user_cards c
+          where c.user_id = auth.uid()
+            and c.item_id = v.id
+       )
+     order by v.lang, v.freq_rank nulls last, v.id
+     limit v_to_enroll
+    on conflict (user_id, item_id) do nothing;
+  end if;
+
+  return query
+  with due_reviews as (
+    select c.*
+      from public.user_cards c
+     where c.user_id = auth.uid()
+       and c.state <> 0
+       and c.due_at <= now()
   ),
   new_cards as (
     select c.*
-    from public.user_cards c
-    where c.user_id = auth.uid()
-      and c.state = 0
-    order by c.created_at, c.id
-    limit greatest(
-      0,
-      coalesce((select s.new_cards_per_day from user_settings s), 0)
-      - (select n.reviewed_count from today_new_reviews n)
-    )
+      from public.user_cards c
+     where c.user_id = auth.uid()
+       and c.state = 0
+     order by c.created_at, c.id
+     limit greatest(0, v_new_limit - coalesce(v_reviewed_count, 0))
   )
   select q.*
-  from (
-    select * from due_reviews
-    union all
-    select * from new_cards
-  ) q
-  order by q.due_at, q.created_at, q.id
-  limit greatest(0, least(coalesce(p_limit, 100), 500));
+    from (
+      select * from due_reviews
+      union all
+      select * from new_cards
+    ) q
+   order by case when q.state = 0 then 1 else 0 end,
+            q.due_at, q.created_at, q.id
+   limit greatest(0, least(coalesce(p_limit, 100), 500));
+end;
 $$;
 
 -- Chỉ đổi daily limit qua hàm có kiểm tra mức tối đa 15 thẻ/ngày.

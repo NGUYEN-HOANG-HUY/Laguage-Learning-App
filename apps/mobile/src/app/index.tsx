@@ -179,8 +179,8 @@ export default function SignInScreen() {
             {authLoading || (session && !sessionValidated && !errorMessage)
               ? 'Đang tải phiên…'
               : isSignUp
-                  ? 'Tạo tài khoản'
-                  : 'Đăng nhập'}
+                ? 'Tạo tài khoản'
+                : 'Đăng nhập'}
           </Text>
 
           {authLoading || (session && !sessionValidated && !errorMessage) ? (

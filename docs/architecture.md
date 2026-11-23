@@ -123,7 +123,7 @@ flowchart TD
 | Dữ liệu cục bộ | `expo-sqlite` | Đủ cho hàng đợi log | Cần đồng bộ đa thiết bị: PowerSync hoặc tương tự |
 | Backend | FastAPI (Python 3.11) | Hệ sinh thái NLP Nhật/Hàn, dễ thêm wav2vec2 sau | Đội chỉ biết JS: Edge Functions |
 | DB, Auth, Storage | Supabase (Postgres + RLS) | Dựng nhanh, chuẩn SQL nên dễ chuyển đi | Tải lớn: Postgres tự quản + R2 |
-| SRS | `ts-fsrs` (client) + `py-fsrs` (server) | Thư viện của cộng đồng FSRS | Có dữ liệu lớn: tự huấn luyện |
+| SRS | `ts-fsrs@5.4.2` (client) + `fsrs==6.3.3` / py-fsrs (server), cùng FSRS-6 | Thư viện upstream, có golden vectors chung | Có dữ liệu lớn: tự huấn luyện |
 | ASR | Whisper large-v3-turbo (Groq) | Rẻ, nhanh, API tương thích OpenAI | Cần streaming: Deepgram hoặc tự host |
 | LLM | Model nhỏ rẻ cho hội thoại; model mạnh cho sinh nội dung (batch) | Cân bằng chi phí và chất lượng | Chạy bộ test 50–100 kịch bản để chọn |
 | TTS | Google Cloud TTS, tạo sẵn cho nội dung tĩnh | Giá theo ký tự | Chất lượng JA/KO chưa đạt: so thêm nhà cung cấp |
@@ -136,11 +136,12 @@ flowchart TD
 
 ## 6. FSRS: quy tắc triển khai
 
-- **Ghi rõ phiên bản FSRS** đang dùng ở cả `ts-fsrs` và `py-fsrs`, lưu vào cột `fsrs_version` của `user_cards`, `review_logs`, `user_fsrs_params`. Số tham số và công thức có thể khác giữa các phiên bản; **đối chiếu repo `open-spaced-repetition`** trước khi cài.
-- **Golden test vectors dùng chung**: một bộ ca (chuỗi đánh giá → S, D, due kỳ vọng) chạy ở cả client và server; lệch là build lỗi.
-- `desired_retention` mặc định 0,90 (khoảng 0,85–0,90 là hợp lý), giới hạn thẻ mới/ngày ≤ 15, chặn "tuyết lở": khi nợ ôn vượt ngưỡng thì tạm dừng thẻ mới.
-- Tham số cá nhân hóa chỉ huấn luyện khi có đủ lượt ôn (khoảng vài trăm đến 1.000+); dưới ngưỡng dùng tham số mặc định.
-- Kèm SM-2 trong prototype để **so sánh** số thẻ ôn mỗi ngày trên mô phỏng 90 ngày.
+- **Phiên bản đã chốt:** `ts-fsrs@5.4.2` trên client và `fsrs==6.3.3` (tên package Python của py-fsrs) trên server; cả hai chạy FSRS-6. Số phiên bản package không cần giống nhau, nhưng thuật toán và cấu hình phải khớp. Đối chiếu upstream ngày 23/11/2026: [ts-fsrs v5.4.2](https://github.com/open-spaced-repetition/ts-fsrs/releases/tag/v5.4.2), [py-fsrs v6.3.3](https://github.com/open-spaced-repetition/py-fsrs/releases/tag/v6.3.3).
+- Cấu hình vectors: desired/request retention 0.90; learning steps 2 phút và 10 phút; relearning step 10 phút; fuzzing tắt; maximum interval 36.500 ngày; thời gian UTC. Learning steps được chốt để hai thư viện làm tròn thời điểm Hard giống nhau.
+- **Golden test vectors dùng chung** tại `packages/fsrs-golden/vectors.json`, chạy trên client lẫn server; kiểm tra state, step, stability, difficulty, due, reps và lapses.
+- Mapping state trong DB: `0 New`, `1 Learning`, `2 Review`, `3 Relearning`. `review_logs` là outbox append-only cục bộ rồi đồng bộ idempotent theo `(user_id, card_id, reviewed_at)`.
+- Hàng đợi tự ghi danh nội dung `sampled`/`verified` theo ngôn ngữ đích, chỉ trong phần hạn mức còn lại; thẻ review đến hạn xếp trước thẻ mới. `new_cards_per_day` mặc định 10, giới hạn 0–15/ngày theo ngày Việt Nam. RPC Supabase là nơi xác thực giới hạn; không cho client tự sửa trường `profiles.new_cards_per_day`.
+- SM-2 được giữ làm comparator. Chạy mô phỏng 90 ngày trong tình huống giả định (mỗi ngày một phiên, thêm 10 thẻ mới/ngày, mọi câu trả lời đều Good) bằng `python -m scripts.simulate_srs` tại `services/api`. Kết quả chỉ mô tả kịch bản mô phỏng, không phải dự báo người dùng thật.
 
 ---
 
@@ -308,7 +309,7 @@ Hạn mức theo gói; tạo sẵn audio cho câu mở đầu kịch bản; cắ
 
 ## 14. Điểm mở cần quyết định
 
-1. Chốt phiên bản FSRS cụ thể và kiểm tra thư viện `ts-fsrs`/`py-fsrs` hỗ trợ cùng phiên bản đó.
+1. Đã chốt thư viện và thuật toán FSRS-6; kiểm tra lại upstream trước khi nâng phiên bản hoặc thay đổi cấu hình.
 2. Chọn LLM chính bằng bộ test 50–100 kịch bản Anh/Nhật/Hàn (so các model cùng tầng giá).
 3. Nhà cung cấp TTS cho tiếng Nhật và Hàn (nghe thử, người bản xứ đánh giá).
 4. Ngưỡng `no_speech_prob`/`avg_logprob` để chặn ảo giác (hiệu chỉnh bằng dữ liệu thật).

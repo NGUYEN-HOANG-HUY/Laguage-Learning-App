@@ -57,7 +57,7 @@ def review_card(
     rating: int,
     reviewed_at: str | datetime,
 ) -> ScheduledCard:
-    if rating not in (1, 2, 3, 4):
+    if isinstance(rating, bool) or not isinstance(rating, int) or rating not in (1, 2, 3, 4):
         raise ValueError("rating must be an integer from 1 to 4.")
 
     reviewed_datetime = _utc_datetime(reviewed_at)
@@ -120,7 +120,7 @@ def review_sm2(
     rating: int,
     reviewed_at: str | datetime,
 ) -> tuple[Sm2State, datetime]:
-    if rating not in (1, 2, 3, 4):
+    if isinstance(rating, bool) or not isinstance(rating, int) or rating not in (1, 2, 3, 4):
         raise ValueError("rating must be an integer from 1 to 4.")
 
     quality = 0 if rating == 1 else rating + 1
