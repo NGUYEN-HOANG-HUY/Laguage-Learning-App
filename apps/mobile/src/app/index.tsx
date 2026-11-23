@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
 
+import { ReviewSession } from '../components/ReviewSession';
 import { supabase } from '../lib/supabase';
 
 export default function SignInScreen() {
@@ -159,6 +160,10 @@ export default function SignInScreen() {
     }
   }
 
+  if (session && sessionValidated) {
+    return <ReviewSession session={session} signOut={signOut} busy={busy} />;
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -173,9 +178,7 @@ export default function SignInScreen() {
           <Text style={styles.title}>
             {authLoading || (session && !sessionValidated && !errorMessage)
               ? 'Đang tải phiên…'
-              : sessionValidated
-                ? 'Bạn đã đăng nhập'
-                : isSignUp
+              : isSignUp
                   ? 'Tạo tài khoản'
                   : 'Đăng nhập'}
           </Text>
@@ -186,16 +189,6 @@ export default function SignInScreen() {
             <Text accessibilityRole="alert" style={styles.error}>
               Chưa cấu hình Supabase. Tạo tệp .env từ .env.example rồi khởi động lại Expo.
             </Text>
-          ) : session && sessionValidated ? (
-            <View style={styles.panel}>
-              <Text style={styles.body}>Tài khoản</Text>
-              <Text style={styles.email}>{session.user.email}</Text>
-              <Button
-                label={busy ? 'Đang xử lý…' : 'Đăng xuất'}
-                disabled={busy}
-                onPress={signOut}
-              />
-            </View>
           ) : (
             <View style={styles.panel}>
               {isSignUp ? (

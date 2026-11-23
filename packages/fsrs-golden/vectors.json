@@ -1,0 +1,82 @@
+{
+  "algorithm": "FSRS-6",
+  "generatedBy": "ts-fsrs@5.4.2",
+  "baseDate": "2026-01-01T00:00:00.000Z",
+  "config": {
+    "desiredRetention": 0.9,
+    "learningSteps": ["2m", "10m"],
+    "relearningSteps": ["10m"],
+    "maximumInterval": 36500,
+    "fuzz": false,
+    "timezone": "UTC"
+  },
+  "ratings": {
+    "again": 1,
+    "hard": 2,
+    "good": 3,
+    "easy": 4
+  },
+  "cases": [
+    {
+      "name": "again-from-new",
+      "grades": [1],
+      "steps": [
+        {"state": 1, "step": 0, "stability": 0.212, "difficulty": 6.4133, "due": "2026-01-01T00:02:00.000Z", "reps": 1, "lapses": 0}
+      ]
+    },
+    {
+      "name": "hard-from-new",
+      "grades": [2],
+      "steps": [
+        {"state": 1, "step": 0, "stability": 1.2931, "difficulty": 5.11217071, "due": "2026-01-01T00:06:00.000Z", "reps": 1, "lapses": 0}
+      ]
+    },
+    {
+      "name": "good-from-new",
+      "grades": [3],
+      "steps": [
+        {"state": 1, "step": 1, "stability": 2.3065, "difficulty": 2.11810397, "due": "2026-01-01T00:10:00.000Z", "reps": 1, "lapses": 0}
+      ]
+    },
+    {
+      "name": "easy-from-new",
+      "grades": [4],
+      "steps": [
+        {"state": 2, "step": 0, "stability": 8.2956, "difficulty": 1, "due": "2026-01-09T00:00:00.000Z", "reps": 1, "lapses": 0}
+      ]
+    },
+    {
+      "name": "learning-graduation",
+      "grades": [3, 3],
+      "steps": [
+        {"state": 1, "step": 1, "stability": 2.3065, "difficulty": 2.11810397, "due": "2026-01-01T00:10:00.000Z", "reps": 1, "lapses": 0},
+        {"state": 2, "step": 0, "stability": 2.3065, "difficulty": 2.11121424, "due": "2026-01-03T00:10:00.000Z", "reps": 2, "lapses": 0}
+      ]
+    },
+    {
+      "name": "learning-again-then-good",
+      "grades": [3, 1, 3],
+      "steps": [
+        {"state": 1, "step": 1, "stability": 2.3065, "difficulty": 2.11810397, "due": "2026-01-01T00:10:00.000Z", "reps": 1, "lapses": 0},
+        {"state": 1, "step": 0, "stability": 0.77508398, "difficulty": 7.39450274, "due": "2026-01-01T00:12:00.000Z", "reps": 2, "lapses": 0},
+        {"state": 1, "step": 1, "stability": 0.8281648, "difficulty": 7.38233661, "due": "2026-01-01T00:22:00.000Z", "reps": 3, "lapses": 0}
+      ]
+    },
+    {
+      "name": "review-hard",
+      "grades": [4, 2],
+      "steps": [
+        {"state": 2, "step": 0, "stability": 8.2956, "difficulty": 1, "due": "2026-01-09T00:00:00.000Z", "reps": 1, "lapses": 0},
+        {"state": 2, "step": 0, "stability": 26.70418346, "difficulty": 4.01060897, "due": "2026-02-05T00:00:00.000Z", "reps": 2, "lapses": 0}
+      ]
+    },
+    {
+      "name": "review-lapse",
+      "grades": [4, 1],
+      "steps": [
+        {"state": 2, "step": 0, "stability": 8.2956, "difficulty": 1, "due": "2026-01-09T00:00:00.000Z", "reps": 1, "lapses": 0},
+        {"state": 3, "step": 0, "stability": 1.38863246, "difficulty": 7.02698957, "due": "2026-01-09T00:10:00.000Z", "reps": 2, "lapses": 1}
+      ]
+    }
+  ]
+}

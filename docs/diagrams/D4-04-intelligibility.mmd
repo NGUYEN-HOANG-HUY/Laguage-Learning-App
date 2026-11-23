@@ -1,0 +1,31 @@
+flowchart TD
+  Input[Target text + ASR transcript]
+  Consent{Voice/text retention consent?}
+  Lang{Target language}
+  EN[English: normalize tokens]
+  JA[Japanese: kana reading available?]
+  JA2[Normalize reading to kana]
+  KO[Korean: normalize Hangul]
+  KO2[Decompose to jamo]
+  ED[Edit distance alignment]
+  Result[WER/CER + substitutions/deletions/insertions]
+  Uncertain{ASR empty or uncertain?}
+  Retry[Return uncertain/empty; retry or text mode]
+  NoStore[Do not persist payload by default]
+  Label[Label: text match / intelligibility proxy]
+  Reject[No phoneme or accent score]
+
+  Input --> Consent
+  Consent --> NoStore
+  Input --> Uncertain
+  Uncertain -- yes --> Retry
+  Uncertain -- no --> Lang
+  Lang -- en --> EN
+  Lang -- ja --> JA
+  JA -- yes --> JA2
+  JA -- no --> Retry
+  Lang -- ko --> KO --> KO2
+  EN --> ED
+  JA2 --> ED
+  KO2 --> ED
+  ED --> Result --> Label --> Reject

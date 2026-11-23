@@ -1,0 +1,26 @@
+flowchart LR
+  U[User utterance, consented]
+  Gate[Consent + quota + request ID]
+  Fanout{Route by approved experiment}
+  Cascade[ASR -> transcript check -> LLM -> TTS]
+  Native[Realtime speech-to-speech session]
+  Transcript[Independent transcript/evaluation path]
+  Align[Text alignment: word / kana / jamo]
+  Policy[Evidence gate + correction policy]
+  Reply[Reply to user]
+  Evidence[(Evidence store: model/prompt/version, edits, review)]
+  Human[Human audit / blinded evaluator]
+  NoAudio[No persistent audio by default]
+  ConsentStore{Separate research consent?}
+
+  U --> Gate --> Fanout
+  Fanout --> Cascade --> Policy
+  Fanout --> Native --> Reply
+  Native --> Transcript --> Align --> Policy
+  Policy --> Reply
+  Cascade --> Evidence
+  Align --> Evidence
+  Reply --> Evidence
+  Evidence --> Human --> Evidence
+  U --> NoAudio
+  Evidence --> ConsentStore

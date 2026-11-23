@@ -1,0 +1,615 @@
+openapi: 3.1.0
+info:
+  title: Language Learning Prototype API
+  version: 0.1.0
+  description: >
+    API draft for the approved Phase 2 PRD. Speech results indicate text
+    intelligibility only; they are not phoneme or accent scores.
+servers:
+  - url: http://localhost:8000
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Conversation
+  - name: Scoring
+  - name: Sync
+  - name: Quota
+paths:
+  /turn:
+    post:
+      tags: [Conversation]
+      operationId: createTurn
+      summary: Process one text or consented voice turn
+      description: >
+        Reserves quota before provider calls. Audio is transient by default.
+        Corrections are capped at two and require evidence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TextTurnRequest'
+            examples:
+              textTurn:
+                summary: A text conversation turn
+                value:
+                  request_id: 93d1e2f5-26db-43e4-8e42-79231d9d4db1
+                  conversation_id: 36eb9885-6d3c-4c3b-a623-9f2d717b5c26
+                  target_language: en
+                  input_mode: text
+                  text: I have been learning English for two years.
+                  consent_to_store_text: false
+                  target_words: [learning, years]
+          multipart/form-data:
+            schema:
+              type: object
+              required: [metadata, audio]
+              properties:
+                metadata:
+                  type: string
+                  description: JSON-encoded VoiceTurnMetadata
+                audio:
+                  type: string
+                  format: binary
+            encoding:
+              metadata:
+                contentType: application/json
+            examples:
+              consentedVoiceTurn:
+                summary: Voice turn with explicit processing consent
+                value:
+                  metadata: '{"request_id":"93d1e2f5-26db-43e4-8e42-79231d9d4db1","conversation_id":"36eb9885-6d3c-4c3b-a623-9f2d717b5c26","target_language":"en","consent_to_process":true}'
+                  audio: <binary>
+      responses:
+        '200':
+          description: Turn processed or safely marked uncertain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TurnResponse'
+              examples:
+                successfulTurn:
+                  summary: Successful turn with text-only scoring
+                  value:
+                    request_id: 93d1e2f5-26db-43e4-8e42-79231d9d4db1
+                    status: ok
+                    transcript: I have been learning English for two years.
+                    text_match:
+                      status: scored
+                      metric: WER
+                      value: 0
+                      errors: []
+                      denominator: 8
+                      caveat: Text match only; not a pronunciation or phoneme score.
+                    reply: What has helped you practice most?
+                    corrections: []
+                    target_words_used: [learning, years]
+                    quota:
+                      feature: conversation_turn
+                      period_start: '2026-11-01T00:00:00Z'
+                      period_end: '2026-12-01T00:00:00Z'
+                      limit: 100
+                      used: 12
+                      reserved: 0
+                      remaining: 88
+                      unit: turns
+                    usage:
+                      - component: llm
+                        provider: mock
+                        model: deterministic-v1
+                        quantity: 1
+                        unit: turn
+                        estimated_cost_usd: 0
+                        billed_cost_usd: null
+                        cost_status: estimated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '413':
+          description: Audio exceeds configured request limit
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/QuotaExceeded'
+  /score:
+    post:
+      tags: [Scoring]
+      operationId: scoreIntelligibility
+      summary: Compare target text with a transcript
+      description: >
+        Computes WER for English and normalized CER for Japanese kana or
+        Korean jamo. Does not score pronunciation, phonemes, accent, or intent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoreRequest'
+            examples:
+              englishText:
+                summary: English word-level comparison
+                value:
+                  target_language: en
+                  target_text: I practice every day.
+                  transcript: I practiced every day.
+                  normalization_version: v1
+      responses:
+        '200':
+          description: Text comparison result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreResponse'
+              examples:
+                wordSubstitution:
+                  summary: One word substitution
+                  value:
+                    status: scored
+                    metric: WER
+                    value: 0.25
+                    errors:
+                      - operation: substitution
+                        target: practice
+                        recognized: practiced
+                        unit: word
+                    denominator: 4
+                    caveat: Text match only; not a pronunciation or phoneme score.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /sync:
+    post:
+      tags: [Sync]
+      operationId: syncReviewEvents
+      summary: Submit idempotent review events and reconcile card state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequest'
+            examples:
+              oneReview:
+                summary: Submit one idempotent review event
+                value:
+                  batch_id: 2f9f1184-58f8-45b7-8898-bab5e895b009
+                  events:
+                    - event_id: a2c65f14-8d9c-45e8-8589-b29197759f58
+                      card_id: 53a930f9-d688-4e90-8c37-88302ee56f1b
+                      rating: 3
+                      reviewed_at: '2026-11-23T09:30:00Z'
+                      algorithm_version: FSRS-6
+                      scheduler_package: fsrs==6.3.3
+                      resulting_state:
+                        stability: 4.2
+                        difficulty: 5.1
+      responses:
+        '200':
+          description: Accepted event IDs, conflicts, and server state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+              examples:
+                acceptedReview:
+                  summary: Server accepted one event and returned authoritative state
+                  value:
+                    accepted_event_ids: [a2c65f14-8d9c-45e8-8589-b29197759f58]
+                    duplicate_event_ids: []
+                    conflicts: []
+                    cards:
+                      - card_id: 53a930f9-d688-4e90-8c37-88302ee56f1b
+                        due_at: '2026-11-27T09:30:00Z'
+                        algorithm_version: FSRS-6
+                        scheduler_state:
+                          stability: 4.2
+                          difficulty: 5.1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /quota:
+    get:
+      tags: [Quota]
+      operationId: getQuota
+      summary: Read current user quota
+      responses:
+        '200':
+          description: Current quota window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaStatus'
+              examples:
+                currentQuota:
+                  summary: Current conversation quota
+                  value:
+                    feature: conversation_turn
+                    period_start: '2026-11-01T00:00:00Z'
+                    period_end: '2026-12-01T00:00:00Z'
+                    limit: 100
+                    used: 12
+                    reserved: 0
+                    remaining: 88
+                    unit: turns
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /quota/reservations:
+    post:
+      tags: [Quota]
+      operationId: reserveQuota
+      summary: Reserve usage atomically before provider calls
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuotaReservationRequest'
+            examples:
+              reserveTurn:
+                summary: Reserve one conversation turn
+                value:
+                  request_id: 93d1e2f5-26db-43e4-8e42-79231d9d4db1
+                  feature: conversation_turn
+                  units: 1
+                  unit: turns
+      responses:
+        '201':
+          description: Reservation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaReservation'
+              examples:
+                acceptedReservation:
+                  summary: Reservation accepted
+                  value:
+                    reservation_id: 77dd3c90-e0f2-4c1a-89b2-37b4fa7e5440
+                    accepted: true
+                    quota:
+                      feature: conversation_turn
+                      period_start: '2026-11-01T00:00:00Z'
+                      period_end: '2026-12-01T00:00:00Z'
+                      limit: 100
+                      used: 12
+                      reserved: 1
+                      remaining: 87
+                      unit: turns
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '429':
+          $ref: '#/components/responses/QuotaExceeded'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Missing or invalid access token
+    IdempotencyConflict:
+      description: Idempotency key was reused with a different payload
+    ValidationError:
+      description: Invalid request or unsupported language/input combination
+    QuotaExceeded:
+      description: Quota is exhausted; no provider call was made
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuotaStatus'
+  schemas:
+    LanguageCode:
+      type: string
+      enum: [en, ja, ko]
+    TextTurnRequest:
+      type: object
+      additionalProperties: false
+      required: [request_id, conversation_id, target_language, input_mode, text]
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+        target_language:
+          $ref: '#/components/schemas/LanguageCode'
+        input_mode:
+          const: text
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        consent_to_store_text:
+          type: boolean
+          default: false
+        target_words:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+    VoiceTurnMetadata:
+      type: object
+      required: [request_id, conversation_id, target_language, consent_to_process]
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+        target_language:
+          $ref: '#/components/schemas/LanguageCode'
+        consent_to_process:
+          type: boolean
+          const: true
+        consent_to_store_text:
+          type: boolean
+          default: false
+        target_words:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+    TurnResponse:
+      type: object
+      required: [request_id, status, reply, corrections, target_words_used, quota]
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ok, uncertain, empty]
+        transcript:
+          type: [string, 'null']
+        text_match:
+          oneOf:
+            - $ref: '#/components/schemas/ScoreResponse'
+            - type: 'null'
+        reply:
+          type: string
+        corrections:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Correction'
+        target_words_used:
+          type: array
+          items:
+            type: string
+        quota:
+          $ref: '#/components/schemas/QuotaStatus'
+        usage:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRecord'
+    Correction:
+      type: object
+      additionalProperties: false
+      required: [original, suggestion, reason, evidence]
+      properties:
+        original:
+          type: string
+        suggestion:
+          type: string
+        reason:
+          type: string
+        evidence:
+          type: string
+          description: Transcript span or explicit grammar/context rule
+    ScoreRequest:
+      type: object
+      additionalProperties: false
+      required: [target_language, target_text, transcript]
+      properties:
+        target_language:
+          $ref: '#/components/schemas/LanguageCode'
+        target_text:
+          type: string
+          maxLength: 4000
+        transcript:
+          type: string
+          maxLength: 4000
+        normalization_version:
+          type: string
+          default: v1
+    ScoreResponse:
+      type: object
+      required: [status, metric, errors, denominator, caveat]
+      properties:
+        status:
+          type: string
+          enum: [scored, uncertain, empty, not_scored]
+        metric:
+          type: string
+          enum: [WER, CER_KANA, CER_JAMO, none]
+        value:
+          type: [number, 'null']
+          minimum: 0
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/EditOperation'
+        denominator:
+          type: integer
+          minimum: 0
+        caveat:
+          type: string
+          const: Text match only; not a pronunciation or phoneme score.
+    EditOperation:
+      type: object
+      required: [operation]
+      properties:
+        operation:
+          type: string
+          enum: [substitution, deletion, insertion]
+        target:
+          type: [string, 'null']
+        recognized:
+          type: [string, 'null']
+        unit:
+          type: string
+          enum: [word, kana, jamo]
+    ReviewEvent:
+      type: object
+      required: [event_id, card_id, rating, reviewed_at, algorithm_version, scheduler_package]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 4
+        reviewed_at:
+          type: string
+          format: date-time
+        algorithm_version:
+          type: string
+        scheduler_package:
+          type: string
+        resulting_state:
+          type: object
+          additionalProperties: true
+    SyncRequest:
+      type: object
+      required: [batch_id, events]
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+        events:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ReviewEvent'
+    SyncResponse:
+      type: object
+      required: [accepted_event_ids, duplicate_event_ids, conflicts, cards]
+      properties:
+        accepted_event_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        duplicate_event_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        conflicts:
+          type: array
+          items:
+            type: object
+            required: [event_id, reason]
+            properties:
+              event_id:
+                type: string
+                format: uuid
+              reason:
+                type: string
+        cards:
+          type: array
+          items:
+            type: object
+            required: [card_id, due_at, algorithm_version, scheduler_state]
+            properties:
+              card_id:
+                type: string
+                format: uuid
+              due_at:
+                type: string
+                format: date-time
+              algorithm_version:
+                type: string
+              scheduler_state:
+                type: object
+                additionalProperties: true
+    QuotaStatus:
+      type: object
+      required: [feature, period_start, period_end, limit, used, reserved, remaining]
+      properties:
+        feature:
+          type: string
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        limit:
+          type: number
+          minimum: 0
+        used:
+          type: number
+          minimum: 0
+        reserved:
+          type: number
+          minimum: 0
+        remaining:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+    QuotaReservationRequest:
+      type: object
+      required: [request_id, feature, units, unit]
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        feature:
+          type: string
+        units:
+          type: number
+          exclusiveMinimum: 0
+        unit:
+          type: string
+    QuotaReservation:
+      type: object
+      required: [reservation_id, accepted, quota]
+      properties:
+        reservation_id:
+          type: string
+          format: uuid
+        accepted:
+          type: boolean
+        quota:
+          $ref: '#/components/schemas/QuotaStatus'
+    UsageRecord:
+      type: object
+      required: [component, provider, model, quantity, unit, cost_status]
+      properties:
+        component:
+          type: string
+          enum: [asr, llm, tts, realtime, other]
+        provider:
+          type: string
+        model:
+          type: string
+        quantity:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+        estimated_cost_usd:
+          type: [number, 'null']
+        billed_cost_usd:
+          type: [number, 'null']
+        cost_status:
+          type: string
+          enum: [estimated, billed, unpriced]

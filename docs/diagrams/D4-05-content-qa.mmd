@@ -1,0 +1,23 @@
+flowchart LR
+  Brief[Approved learning objective]
+  Prompt[Versioned generation prompt]
+  Draft[LLM content draft]
+  Auto[Automated checks: schema, duplicates, language, safety]
+  License[Source and license verification]
+  Review[Human language reviewer]
+  Reject[Reject / revise with reason]
+  Publish[Publish immutable content version]
+  Catalog[(Curated content catalog)]
+  Evidence[(Source, reviewer, model, QA evidence)]
+  Rollback[Deprecate / rollback version]
+
+  Brief --> Prompt --> Draft --> Auto
+  Auto -->|fails| Reject
+  Auto -->|passes| License
+  License -->|unclear| Reject
+  License -->|verified| Review
+  Review -->|fails| Reject
+  Review -->|approved| Publish --> Catalog
+  Publish --> Evidence
+  Catalog --> Rollback
+  Rollback --> Evidence

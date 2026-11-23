@@ -24,7 +24,7 @@ create table public.profiles (
   desired_retention  real not null default 0.90
                        check (desired_retention between 0.70 and 0.97),
   new_cards_per_day  int  not null default 10
-                       check (new_cards_per_day between 0 and 50),
+                       check (new_cards_per_day between 0 and 15),
   store_raw_audio    boolean not null default false,   -- mặc định KHÔNG lưu audio thô
   created_at         timestamptz not null default now()
 );
@@ -102,11 +102,15 @@ create table public.user_cards (
                  check (state between 0 and 3),     -- 0 New, 1 Learning, 2 Review, 3 Relearning
   stability    real,                              -- S (ngày)
   difficulty   real,                              -- D (1..10)
+  learning_step smallint not null default 0
+                 check (learning_step >= 0),
+  scheduled_days int not null default 0
+                 check (scheduled_days >= 0),
   due_at       timestamptz not null default now(),
   last_review  timestamptz,
-  reps         int not null default 0,
-  lapses       int not null default 0,
-  fsrs_version text,                              -- ghi rõ phiên bản thuật toán
+  reps         int not null default 0 check (reps >= 0),
+  lapses       int not null default 0 check (lapses >= 0),
+  fsrs_version text not null default 'FSRS-6',
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   unique (user_id, item_id)
@@ -234,16 +238,79 @@ group by l.user_id;
 -- 6. HÀM TRUY VẤN
 -- ---------------------------------------------------------------------
 -- Hàng đợi ôn hôm nay (thẻ sắp quên nhất lên trước)
-create or replace function public.get_due_cards(p_limit int default 100)
+create or replace function public.get_review_queue(p_limit int default 100)
 returns setof public.user_cards
-language sql stable security invoker as $$
-  select *
-  from public.user_cards
-  where user_id = auth.uid()
-    and state <> 0
-    and due_at <= now()
-  order by due_at
-  limit p_limit;
+language sql stable security invoker
+set search_path = ''
+as $$
+  with user_settings as (
+    select p.new_cards_per_day
+    from public.profiles p
+    where p.id = auth.uid()
+  ),
+  today_new_reviews as (
+    select count(*)::int as reviewed_count
+    from public.review_logs r
+    where r.user_id = auth.uid()
+      and r.prev_state = 0
+      and r.reviewed_at >= (
+        date_trunc('day', now() at time zone 'Asia/Ho_Chi_Minh')
+        at time zone 'Asia/Ho_Chi_Minh'
+      )
+  ),
+  due_reviews as (
+    select c.*
+    from public.user_cards c
+    where c.user_id = auth.uid()
+      and c.state <> 0
+      and c.due_at <= now()
+  ),
+  new_cards as (
+    select c.*
+    from public.user_cards c
+    where c.user_id = auth.uid()
+      and c.state = 0
+    order by c.created_at, c.id
+    limit greatest(
+      0,
+      coalesce((select s.new_cards_per_day from user_settings s), 0)
+      - (select n.reviewed_count from today_new_reviews n)
+    )
+  )
+  select q.*
+  from (
+    select * from due_reviews
+    union all
+    select * from new_cards
+  ) q
+  order by q.due_at, q.created_at, q.id
+  limit greatest(0, least(coalesce(p_limit, 100), 500));
+$$;
+
+-- Tăng giới hạn thẻ mới có hiệu lực từ phiên đăng nhập hiện tại.
+create or replace function public.set_new_cards_per_day(p_limit int)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_limit is null or p_limit < 0 or p_limit > 15 then
+    raise exception 'new_cards_per_day must be between 0 and 15'
+      using errcode = '22023';
+  end if;
+
+  update public.profiles
+  set new_cards_per_day = p_limit
+  where id = auth.uid();
+
+  if not found then
+    raise exception 'authenticated profile not found'
+      using errcode = 'P0002';
+  end if;
+
+  return p_limit;
+end;
 $$;
 
 -- ---------------------------------------------------------------------
@@ -266,7 +333,7 @@ create policy profiles_select_own on public.profiles
   for select to authenticated using (id = auth.uid());
 revoke update on public.profiles from authenticated;
 grant update (display_name, native_lang, target_langs, desired_retention,
-              new_cards_per_day, store_raw_audio)
+              store_raw_audio)
   on public.profiles to authenticated;
 create policy profiles_update_own on public.profiles
   for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
@@ -278,6 +345,10 @@ create policy sentences_read_qa on public.example_sentences
   for select to authenticated using (qa_status in ('sampled','verified'));
 create policy quota_read on public.quota_limits
   for select to authenticated using (true);
+
+grant execute on function public.get_review_queue(int) to authenticated;
+revoke all on function public.set_new_cards_per_day(int) from public;
+grant execute on function public.set_new_cards_per_day(int) to authenticated;
 
 -- Thẻ của người dùng
 create policy cards_select_own on public.user_cards

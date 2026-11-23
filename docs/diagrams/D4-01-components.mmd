@@ -1,0 +1,47 @@
+flowchart LR
+  Learner[Người học]
+  subgraph Client[React Vite TypeScript PWA]
+    UI[Màn hình học và hội thoại]
+    IDB[(IndexedDB: review event queue)]
+    Mic[Microphone chủ động + consent]
+  end
+  subgraph API[FastAPI Python 3.11]
+    Auth[OIDC adapter + authorization]
+    Turn[Turn orchestrator]
+    Score[Intelligibility scorer]
+    SRS[SRS service + event replay]
+    Optimizer[Offline FSRS parameter trainer]
+    Quota[Quota reservation + ledger]
+    Provider[Provider adapters: mock / production]
+    Evaluator[Evaluation + evidence writer]
+  end
+  DB[(PostgreSQL + RLS)]
+  Content[Curated content + license registry]
+  ASR[ASR]
+  LLM[LLM structured output]
+  TTS[TTS]
+  Realtime[Speech-to-Speech realtime]
+  EvalStore[(Evidence / evaluation store)]
+
+  Learner --> UI
+  UI <--> IDB
+  Mic --> UI
+  UI --> Auth --> Turn
+  Turn --> Quota
+  Turn --> Provider
+  Provider --> ASR
+  Provider --> LLM
+  Provider --> TTS
+  Provider --> Realtime
+  Turn --> Score
+  Turn --> SRS
+  Turn --> Content
+  Auth --> DB
+  Quota --> DB
+  SRS --> DB
+  DB --> Optimizer
+  Optimizer --> DB
+  Score --> DB
+  Turn --> DB
+  Turn --> Evaluator --> EvalStore
+  Provider --> Evaluator

@@ -1,0 +1,24 @@
+sequenceDiagram
+  autonumber
+  actor U as Người học
+  participant C as React client / IndexedDB
+  participant TS as ts-fsrs client candidate
+  participant API as FastAPI /sync
+  participant PY as py-fsrs server candidate
+  participant DB as PostgreSQL
+
+  U->>C: Chọn Again / Hard / Good / Easy
+  C->>C: Tạo event UUID, UTC, model/package version
+  opt Parity vectors đã đạt
+    C->>TS: Preview local next due
+    TS-->>C: Due hint (không phải authority)
+  end
+  C->>C: Lưu event vào IndexedDB (offline queue)
+  C->>API: POST /sync batch + idempotency key
+  API->>DB: Verify owner + dedupe event IDs
+  API->>DB: Append review_logs
+  API->>PY: Replay canonical events nếu package parity đã duyệt
+  PY-->>API: Updated state / next due
+  API->>DB: Upsert user_cards
+  API-->>C: Accepted IDs + conflicts + authoritative state
+  C->>C: Cập nhật local cache và xóa accepted events

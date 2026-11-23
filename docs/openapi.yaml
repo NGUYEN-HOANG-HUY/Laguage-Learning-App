@@ -1,0 +1,581 @@
+openapi: 3.0.3
+info:
+  title: Language App API
+  version: 0.1.0
+  description: |
+    API backend cho ứng dụng học ngoại ngữ AI (Anh / Nhật / Hàn cho người Việt).
+    Bản v0.1, đồng bộ với docs/architecture.md (mục 8) và docs/data_model.sql.
+
+    Quy ước:
+    - Xác thực bằng JWT của Supabase (Bearer).
+    - `lang` luôn là một trong `en`, `ja`, `ko`.
+    - Tính năng chấm giọng nói trả về **độ dễ hiểu (intelligibility)**, KHÔNG phải điểm phát âm cấp âm vị.
+    - `corrections` tối đa 2 phần tử mỗi lượt hội thoại.
+    - Giá trị trong `quota_limits` là giả định, xem data_model.sql.
+servers:
+  - url: http://localhost:8000
+    description: Môi trường chạy cục bộ
+security:
+  - bearerAuth: []
+tags:
+  - name: Conversation
+  - name: Scoring
+  - name: SRS
+  - name: Quota
+  - name: Content
+  - name: Account
+
+paths:
+  /v1/turn:
+    post:
+      tags: [Conversation]
+      operationId: createTurn
+      summary: Gửi một lượt hội thoại (giọng nói hoặc nhắn tin), nhận phản hồi qua SSE
+      description: |
+        Chế độ giọng nói gửi `multipart/form-data` kèm `audio` (tối đa 30 giây).
+        Chế độ nhắn tin gửi `application/json` kèm `text`.
+
+        Phản hồi là luồng Server-Sent Events gồm các sự kiện theo thứ tự:
+        `transcript` → `reply_text` → `audio` (lặp theo từng câu) → `final`.
+        Khi có lỗi giữa chừng sẽ có sự kiện `error`.
+        Luồng dựng theo từng câu để giảm độ trễ (TTS khi LLM còn đang sinh).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TurnVoiceRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TurnTextRequest'
+      responses:
+        '200':
+          description: Luồng SSE
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: transcript
+                data: {"text": "I go to the market yesterday"}
+
+                event: reply_text
+                data: {"text": "Oh nice! What did you buy?"}
+
+                event: audio
+                data: {"sentence_index": 0, "url": "https://cdn.example/r_81_0.opus"}
+
+                event: final
+                data: {"turn_id": "6f1c0c1e-0000-4000-8000-000000000001", "transcript": "I go to the market yesterday", "asr": {"lang": "en", "avg_logprob": -0.21, "no_speech_prob": 0.01}, "reply": {"text": "Oh nice! What did you buy?", "audio_url": "https://cdn.example/r_81.opus"}, "corrections": [{"original": "I go", "corrected": "I went", "type": "tense", "explain_vi": "Có 'yesterday' nên dùng quá khứ đơn.", "save_as_card": true}], "target_words_used": ["market", "yesterday"], "used_item_ids": []}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: Âm thanh nghi ngờ im lặng hoặc ảo giác ASR; yêu cầu thu lại, KHÔNG chấm và KHÔNG gọi LLM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/QuotaExceeded'
+
+  /v1/score:
+    post:
+      tags: [Scoring]
+      operationId: scoreReadAloud
+      summary: Chấm "độ dễ hiểu" khi người dùng đọc to câu mục tiêu
+      description: |
+        Whisper (ASR) + chuẩn hóa văn bản + so khớp. Đơn vị so khớp theo ngôn ngữ:
+        Anh theo từ (WER), Nhật theo kana (CER), Hàn theo jamo (CER).
+        Nếu ASR không đủ tin cậy (nghi im lặng), trả `flags.silence_suspect = true`
+        và `intelligibility = null` thay vì bịa điểm.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ScoreRequest'
+      responses:
+        '200':
+          description: Kết quả độ dễ hiểu
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/QuotaExceeded'
+
+  /v1/sync:
+    post:
+      tags: [SRS]
+      operationId: syncReviews
+      summary: Đồng bộ nhật ký ôn từ client, server replay để dựng trạng thái thẻ chuẩn
+      description: |
+        Idempotent: bản ghi trùng khóa `(user_id, card_id, reviewed_at)` bị bỏ qua và đếm vào `duplicates`.
+        Server dựng lại trạng thái thẻ bằng py-fsrs theo thứ tự thời gian.
+        Nếu `fsrs_version` của client khác phiên bản server đang ghim, trả 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequest'
+      responses:
+        '200':
+          description: Đã xử lý
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Lệch phiên bản FSRS giữa client và server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FsrsVersionMismatch'
+
+  /v1/quota:
+    get:
+      tags: [Quota]
+      operationId: getQuota
+      summary: Xem hạn mức và mức dùng hôm nay (múi giờ Asia/Ho_Chi_Minh)
+      responses:
+        '200':
+          description: Hạn mức hiện tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuotaStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/errors/{error_id}/save-as-card:
+    post:
+      tags: [SRS]
+      operationId: saveErrorAsCard
+      summary: Người dùng xác nhận lưu một lỗi hội thoại thành thẻ ôn
+      description: Chỉ tạo thẻ khi người dùng chủ động xác nhận, để tránh rác trong bộ thẻ.
+      parameters:
+        - name: error_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Đã tạo thẻ
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error_id, card_id]
+                properties:
+                  error_id:
+                    type: string
+                    format: uuid
+                  card_id:
+                    type: string
+                    format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Lỗi này đã được lưu thành thẻ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/content/report:
+    post:
+      tags: [Content]
+      operationId: reportContent
+      summary: Báo lỗi một mục từ vựng hoặc câu ví dụ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentReportRequest'
+      responses:
+        '202':
+          description: Đã ghi nhận, đưa vào hàng đợi duyệt
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report_id]
+                properties:
+                  report_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/data:
+    delete:
+      tags: [Account]
+      operationId: deleteMyData
+      summary: Xóa toàn bộ dữ liệu của người dùng (thẻ, log, hội thoại, audio nếu có)
+      responses:
+        '202':
+          description: Đã nhận yêu cầu xóa, xử lý bất đồng bộ
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Yêu cầu không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Thiếu hoặc sai token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Không tìm thấy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    QuotaExceeded:
+      description: Hết hạn mức hội thoại/chấm điểm hôm nay; học và ôn thẻ vẫn dùng được
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuotaError'
+
+  schemas:
+    Lang:
+      type: string
+      enum: [en, ja, ko]
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: invalid_request
+        message:
+          type: string
+
+    QuotaError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            reason:
+              type: string
+              enum: [turns_per_day, cost_per_day, audio_too_long]
+            resets_at:
+              type: string
+              format: date-time
+
+    FsrsVersionMismatch:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [server_fsrs_version]
+          properties:
+            server_fsrs_version:
+              type: string
+
+    TurnVoiceRequest:
+      type: object
+      required: [audio, conversation_id, lang]
+      properties:
+        audio:
+          type: string
+          format: binary
+          description: Âm thanh tối đa 30 giây (m4a hoặc opus)
+        conversation_id:
+          type: string
+          format: uuid
+        lang:
+          $ref: '#/components/schemas/Lang'
+
+    TurnTextRequest:
+      type: object
+      required: [text, conversation_id, lang]
+      properties:
+        text:
+          type: string
+          maxLength: 1000
+        conversation_id:
+          type: string
+          format: uuid
+        lang:
+          $ref: '#/components/schemas/Lang'
+
+    AsrInfo:
+      type: object
+      properties:
+        lang:
+          $ref: '#/components/schemas/Lang'
+        avg_logprob:
+          type: number
+        no_speech_prob:
+          type: number
+
+    Correction:
+      type: object
+      required: [original, corrected, type, explain_vi]
+      properties:
+        original:
+          type: string
+        corrected:
+          type: string
+        type:
+          type: string
+          enum: [tense, agreement, word_choice, particle, honorific, other]
+        explain_vi:
+          type: string
+        save_as_card:
+          type: boolean
+
+    TurnFinal:
+      type: object
+      required: [turn_id, transcript, reply, corrections]
+      properties:
+        turn_id:
+          type: string
+          format: uuid
+        transcript:
+          type: string
+        asr:
+          $ref: '#/components/schemas/AsrInfo'
+        reply:
+          type: object
+          required: [text]
+          properties:
+            text:
+              type: string
+            audio_url:
+              type: string
+              format: uri
+        corrections:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Correction'
+        target_words_used:
+          type: array
+          items:
+            type: string
+        used_item_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    ScoreRequest:
+      type: object
+      required: [audio, target_text, lang]
+      properties:
+        audio:
+          type: string
+          format: binary
+        target_text:
+          type: string
+          maxLength: 300
+        lang:
+          $ref: '#/components/schemas/Lang'
+        item_id:
+          type: string
+          format: uuid
+          description: Mục từ vựng đang luyện (tùy chọn)
+
+    Diff:
+      type: object
+      required: [type, index, expected]
+      properties:
+        type:
+          type: string
+          enum: [substitution, deletion, insertion]
+        unit:
+          type: string
+          enum: [word, kana, jamo]
+        index:
+          type: integer
+          minimum: 0
+        expected:
+          type: string
+        heard:
+          type: string
+          nullable: true
+
+    ScoreResponse:
+      type: object
+      required: [transcript, intelligibility, diffs, flags]
+      properties:
+        transcript:
+          type: string
+        intelligibility:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: null khi nghi im lặng hoặc ảo giác (không bịa điểm)
+        diffs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diff'
+        asr:
+          $ref: '#/components/schemas/AsrInfo'
+        flags:
+          type: object
+          required: [silence_suspect]
+          properties:
+            silence_suspect:
+              type: boolean
+
+    ReviewEvent:
+      type: object
+      required: [card_id, reviewed_at, rating]
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        reviewed_at:
+          type: string
+          format: date-time
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: 1 Again, 2 Hard, 3 Good, 4 Easy
+        duration_ms:
+          type: integer
+          minimum: 0
+
+    SyncRequest:
+      type: object
+      required: [client_id, fsrs_version, events]
+      properties:
+        client_id:
+          type: string
+          format: uuid
+        fsrs_version:
+          type: string
+        events:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ReviewEvent'
+
+    CardState:
+      type: object
+      required: [card_id, state, due_at, reps, lapses]
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        state:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: 0 New, 1 Learning, 2 Review, 3 Relearning
+        stability:
+          type: number
+          nullable: true
+        difficulty:
+          type: number
+          nullable: true
+        due_at:
+          type: string
+          format: date-time
+        last_review:
+          type: string
+          format: date-time
+          nullable: true
+        reps:
+          type: integer
+        lapses:
+          type: integer
+        fsrs_version:
+          type: string
+
+    SyncResponse:
+      type: object
+      required: [accepted, duplicates, cards, server_time]
+      properties:
+        accepted:
+          type: integer
+        duplicates:
+          type: integer
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/CardState'
+        server_time:
+          type: string
+          format: date-time
+
+    QuotaStatus:
+      type: object
+      required: [plan, limits, usage_today, resets_at]
+      properties:
+        plan:
+          type: string
+          enum: [free, plus, pro]
+        limits:
+          type: object
+          properties:
+            max_turns_per_day:
+              type: integer
+            max_audio_seconds_per_turn:
+              type: integer
+            max_cost_usd_per_day:
+              type: number
+        usage_today:
+          type: object
+          properties:
+            turns_today:
+              type: integer
+            cost_usd_today:
+              type: number
+        resets_at:
+          type: string
+          format: date-time
+
+    ContentReportRequest:
+      type: object
+      required: [content_type, content_id, reason]
+      properties:
+        content_type:
+          type: string
+          enum: [vocab, sentence]
+        content_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          enum: [wrong_meaning, wrong_reading, unnatural, offensive, audio_issue, other]
+        note:
+          type: string
+          maxLength: 500

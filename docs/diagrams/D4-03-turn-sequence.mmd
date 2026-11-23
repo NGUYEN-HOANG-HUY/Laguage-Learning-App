@@ -1,0 +1,37 @@
+sequenceDiagram
+  autonumber
+  actor U as Người học
+  participant UI as React client
+  participant API as FastAPI /turn
+  participant Q as Quota + usage ledger
+  participant ASR as ASR adapter
+  participant LLM as LLM adapter
+  participant TTS as TTS adapter
+  participant DB as PostgreSQL
+
+  U->>UI: Gửi text hoặc chủ động ghi âm
+  UI->>API: POST /turn + request_id + consent state
+  API->>Q: Reserve quota (idempotent)
+  alt Quota hết
+    Q-->>API: Reject reservation
+    API-->>UI: 429 + quota remaining/reset
+  else Được phép
+    Q-->>API: Reservation ID
+    opt Voice input
+      API->>ASR: Audio stream, no persistent audio storage
+      ASR-->>API: Transcript + confidence metadata
+    end
+    alt Transcript rỗng / không chắc
+      API-->>UI: status=uncertain, ask to retry or text mode
+    else Input usable
+      API->>DB: Load approved objectives/context
+      API->>LLM: Structured request; <= 2 corrections
+      LLM-->>API: Schema-constrained reply
+      opt User requested audio response
+        API->>TTS: Synthesize reply
+        TTS-->>API: Ephemeral audio response
+      end
+      API->>DB: Store allowed conversation fields + usage ledger
+      API-->>UI: reply, corrections, target_words_used, usage
+    end
+  end
