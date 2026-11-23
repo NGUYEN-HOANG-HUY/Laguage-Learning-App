@@ -3,7 +3,7 @@
 ## 1) Đã làm được gì
 
 - Tạo `01_research_report.md` (bản nháp) với so sánh đối thủ, giá API, nguồn học thuật, tình trạng giấy phép dữ liệu, các mục **CHƯA XÁC MINH** và danh mục URL/ngày truy cập.
-- Tạo ma trận D2 ở `02_feature_matrix.xlsx`, gồm sheet đối thủ, mẫu đánh giá, giá API và danh mục nguồn.
+- Tạo và mở kiểm tra `02_feature_matrix.xlsx`, gồm 6 sheet: `Doi thu`, `Reviews`, `Gia app`, `Gia API`, `Nguon` và `Readme`. Ma trận có 18 sản phẩm, 18 dòng mẫu đánh giá (tổng n=531), 10 dịch vụ/nhóm API và 36 nguồn; giá theo từng app được ghi rõ CHƯA XÁC MINH ngoại trừ giá hiển thị MochiVocab.
 - Nghiên cứu 18 sản phẩm/dịch vụ đúng phạm vi tối thiểu: 10 đối thủ chính, 2 trợ lý đa dụng, 3 ứng dụng có mặt tại Việt Nam và 3 ứng dụng chuyên Nhật/Hàn.
 - Lấy mẫu 531 đánh giá App Store trong giai đoạn 22/11/2025–22/11/2026: 17 sản phẩm đạt 30 đánh giá; Bunpro có 21 (6 từ cửa hàng Nhật, 15 từ cửa hàng Mỹ).
 - Ghi rõ mọi số rating mẫu là rating App Store theo storefront; không lưu danh tính người đánh giá hay trích nguyên văn nội dung review.
@@ -30,6 +30,7 @@
 
 - Bunpro chưa đạt 30 đánh giá gần đây trong hai storefront có dữ liệu; không lấy đánh giá cũ để bù.
 - Phân tích review hiện chủ yếu là rating/phân bố và đếm từ khóa sơ bộ; chưa hoàn tất mã hóa định tính nhất quán cho toàn bộ 18 sản phẩm. Đặc biệt, năm mẫu ngoài Việt Nam chưa được mã hóa chủ đề; không kết luận các nỗi đau lặp lại từ mẫu này.
+- D1/D2 không lưu các giá trị rating tổng/số lượt rating theo từng app từ Apple Search/Lookup API hoặc số đếm từ khóa theo app; không dùng các số này làm căn cứ so sánh cho tới khi bổ sung bản ghi có thể đối chiếu.
 - Chưa có mẫu Google Play review; kết quả từ App Store chịu thiên lệch nền tảng, quốc gia và người tự chọn đánh giá.
 - Giá app tiêu dùng, hạn mức AI và tính năng có thể khác giữa Việt Nam, web/iOS/Android, trial và chương trình khuyến mãi.
 - Giá API phụ thuộc đơn vị thanh toán, mô hình/region, ngôn ngữ, loại realtime/batch, lưu lượng đầu vào/ra và khuyến mãi; không thể so sánh trực tiếp các mức giá hiển thị.

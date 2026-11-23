@@ -74,13 +74,13 @@ Nguồn là Apple App Store RSS theo storefront; URL mẫu được tạo theo m
 
 **Cỡ mẫu:** 17 × 30 + 6 + 15 = 531 đánh giá [SUY LUẬN từ số mẫu đã lấy]. Bunpro là sản phẩm duy nhất chưa đạt 30; nguồn App Store Nhật có 6 và Mỹ có 15 đánh giá trong khoảng thời gian. Không lấy review cũ hơn để đủ số lượng.
 
-**Tín hiệu từ khóa sơ bộ (không phải phân tích cảm xúc):** với 13 mẫu storefront Việt Nam, đếm số review có chứa từ khóa thuộc nhóm chủ đề paywall/giá, kỹ thuật, nội dung, nói/phát âm, động lực. Một review có thể thuộc nhiều nhóm; bộ từ khóa không phân biệt lời khen với phàn nàn. D2 ghi số đếm và đánh dấu đây chỉ là bộ lọc sơ bộ. Năm mẫu storefront khác Việt Nam chưa được mã hóa định tính. Do đó **chưa có kết luận đã kiểm chứng về “nỗi đau lặp lại” cho từng đối thủ**.
+**Tín hiệu từ khóa sơ bộ (không phải phân tích cảm xúc):** với 13 mẫu storefront Việt Nam, đã thử đếm review có chứa từ khóa thuộc nhóm paywall/giá, kỹ thuật, nội dung, nói/phát âm, động lực. Một review có thể thuộc nhiều nhóm; bộ từ khóa không phân biệt lời khen với phàn nàn. Số đếm theo từng sản phẩm không được đóng gói vào D1/D2; sheet `Reviews` chỉ chứa rating và phân bố rating. Năm mẫu storefront khác Việt Nam chưa được mã hóa định tính. Do đó **chưa có kết luận đã kiểm chứng về “nỗi đau lặp lại” cho từng đối thủ**.
 
 **Hạn chế:** mẫu App Store không đại diện người dùng Android/web; storefront Mỹ/Nhật không đại diện Việt Nam; review tự chọn chịu thiên lệch; rating có thể bị ảnh hưởng bởi cập nhật, thanh toán hoặc sự cố ngắn hạn. Không dùng rating mẫu để xếp hạng chất lượng sư phạm.
 
 ## 5. Rating tổng trên cửa hàng và quy mô công khai
 
-- [ĐÃ XÁC MINH] Apple Search/Lookup API trả rating tổng và số rating tại storefront Việt Nam cho 17 sản phẩm có listing phù hợp; dữ liệu theo từng app ID được ghi trong sheet `Đối thủ` của D2. Đây là rating store, không phải số người dùng hay số học viên hoàn thành khóa. AnkiMobile không có số liệu VN được đối chiếu trong lần tra cứu; không điền thay bằng số của ứng dụng khác. [S19]
+- [ĐÃ XÁC MINH] Apple Search/Lookup API có thể trả rating tổng và số rating theo storefront. Tuy nhiên, các giá trị tổng theo từng ứng dụng không được đóng gói vào D1/D2 nên không thể đối chiếu lại từ bộ bàn giao này; không dùng chúng làm số người dùng hay số học viên hoàn thành khóa. AnkiMobile không có số liệu VN được đối chiếu trong lần tra cứu. [S19]
 - [ĐÃ XÁC MINH — TỰ CÔNG BỐ] ELSA nêu hơn 50M lượt tải toàn cầu và 10M tại Việt Nam; Busuu nêu 120M+ registered users; Memrise nêu 80M learners; LingQ nêu 5M+ learners; eJOY nêu 1.5M+ users; Langua nêu 30,000+ learners. Đây là các chỉ số khác định nghĩa và do chính nhà cung cấp công bố, không đối chiếu được thành một bảng thị phần. [S02, S06–S08, S10, S13]
 - [CHƯA XÁC MINH] Doanh thu/ARPU hiện hành của phần lớn đối thủ, MAU/DAU, tỷ lệ chuyển đổi trả phí và xếp hạng tải chuẩn hóa theo Việt Nam. Trang Investor Relations của Duolingo không trả nội dung qua công cụ truy cập lần này; không chép số thứ cấp thay thế.
 
