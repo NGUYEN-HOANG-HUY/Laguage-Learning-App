@@ -69,3 +69,45 @@ export type RoleplayTurn = {
   corrections: RoleplayCorrection[];
   provider: 'mock';
 };
+
+export type DialogueImpact = 'positive' | 'neutral' | 'needs_repair';
+
+export type DialogueChoice = {
+  id: string;
+  utterance: string;
+  response: string;
+  nextNodeId: string | null;
+  impact: DialogueImpact;
+  explanationVi: string;
+  targetExpressions: string[];
+};
+
+export type DialogueNode = {
+  id: string;
+  partnerPrompt: string;
+  instructionVi: string;
+  choices: readonly DialogueChoice[];
+};
+
+export type DialogueTree = {
+  id: ConversationScenario;
+  language: LanguageCode;
+  level: ProficiencyLevel;
+  title: string;
+  description: string;
+  startNodeId: string;
+  nodes: readonly DialogueNode[];
+};
+
+export type SampleVocabularyItem = {
+  id: string;
+  language: LanguageCode;
+  level: ProficiencyLevel;
+  term: string;
+  ipa: string;
+  partOfSpeech: string;
+  meaningVi: string;
+  collocations: readonly string[];
+  grammarNote: string;
+  example: ExampleSentence;
+};
