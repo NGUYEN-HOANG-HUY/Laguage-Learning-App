@@ -4,7 +4,7 @@ import type {
   ProficiencyLevel,
   VocabularyCard,
 } from '../types/learning';
-import { createInitialSm2State } from '../utils/srs';
+import { createInitialSm2State } from '../utils/srs.ts';
 
 function createCard(
   id: string,

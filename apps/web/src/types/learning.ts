@@ -51,3 +51,21 @@ export type ReviewEvent = {
   previousState: Sm2State;
   nextState: Sm2State;
 };
+
+export type RoleplayMessage = {
+  role: 'user' | 'assistant';
+  text: string;
+};
+
+export type RoleplayCorrection = {
+  original: string;
+  corrected: string;
+  explanationVi: string;
+};
+
+export type RoleplayTurn = {
+  scenario: ConversationScenario;
+  reply: string;
+  corrections: RoleplayCorrection[];
+  provider: 'mock';
+};
